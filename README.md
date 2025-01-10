@@ -85,7 +85,7 @@ BPOM-REST-API/
 ---
 
 ## 👥 Contributors
-- [Your Name](https://github.com/your-username)  
+- [@Mohd_Labib](https://github.com/mohdlabib)  
 Feel free to contribute by submitting issues and pull requests!
 
 ---

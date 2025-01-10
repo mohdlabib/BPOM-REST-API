@@ -79,7 +79,6 @@ const scrapeData = async () => {
     await page.goto(baseUrl, { waitUntil: 'networkidle2' });
 
     let currentPage = 1;
-    const maxPages = 1000;
     const seenRegisterNumbers = await loadSeenRegisterNumbers();
 
     console.log(`Total nomor registrasi yang sudah diproses: ${seenRegisterNumbers.size}`);
@@ -123,16 +122,12 @@ const scrapeData = async () => {
             break;
         }
 
-        if (currentPage >= maxPages) {
-            console.log(`Mencapai batas maksimal halaman (${maxPages}). Berhenti scraping.`);
-            break;
-        }
-
         try {
             await page.click('.pagination-wrapper #custom_table_next');
             await delay(5000);
         } catch (error) {
             console.error(`Gagal navigasi ke halaman berikutnya dari halaman ${currentPage}:`, error);
+            break;
         }
 
         currentPage++;

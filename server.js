@@ -71,7 +71,7 @@ const parseData = (data) => {
 
 const scrapeData = async () => {
     const baseUrl = 'https://cekbpom.pom.go.id/all-produk';
-    const browser = await puppeteer.launch({ headless: true });
+    const browser = await puppeteer.launch({headless: true, args: ['--no-sandbox']})
     const page = await browser.newPage();
     await page.setDefaultTimeout(0);
 
@@ -79,9 +79,28 @@ const scrapeData = async () => {
     await page.goto(baseUrl, { waitUntil: 'networkidle2' });
 
     let currentPage = 1;
+    let totalPerPage = 25000;
+
     const seenRegisterNumbers = await loadSeenRegisterNumbers();
 
     console.log(`Total nomor registrasi yang sudah diproses: ${seenRegisterNumbers.size}`);
+
+    await page.waitForSelector('.dataTables_wrapper #customLength');
+    console.log(`Mengatur jumlah data per halaman menjadi ${totalPerPage}...`);
+    await page.evaluate((total) => {
+        const input = document.querySelector('#customLength');
+        if (input) {
+            input.value = total; 
+            const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
+            input.dispatchEvent(event); 
+        }
+    }, totalPerPage);
+
+    console.log('Menunggu loading selesai...');
+    await page.waitForFunction(() => {
+        const blockUiElement = document.querySelector('.block-ui-overlay');
+        return !blockUiElement || blockUiElement.style.display === 'none';
+    });
 
     while (true) {
         try {
@@ -114,7 +133,7 @@ const scrapeData = async () => {
             break;
         }
 
-        const nextButton = await page.$('.pagination-wrapper  #custom_table_next');
+        const nextButton = await page.$('.pagination-wrapper #custom_table_next');
         const isDisabled = await page.evaluate(button => button?.disabled, nextButton);
 
         if (!nextButton || isDisabled) {
@@ -124,7 +143,11 @@ const scrapeData = async () => {
 
         try {
             await page.click('.pagination-wrapper #custom_table_next');
-            await delay(5000);
+            console.log('Navigasi ke halaman berikutnya...');
+            await page.waitForFunction(() => {
+                const blockUiElement = document.querySelector('.block-ui-overlay');
+                return !blockUiElement || blockUiElement.style.display === 'none';
+            });
         } catch (error) {
             console.error(`Gagal navigasi ke halaman berikutnya dari halaman ${currentPage}:`, error);
             break;
@@ -136,6 +159,7 @@ const scrapeData = async () => {
     console.log('Scraping selesai. Data disimpan ke file db/bpom_data.json.');
     await browser.close();
 };
+
 
 function getFormattedDate() {
     const now = new Date();

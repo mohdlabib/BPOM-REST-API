@@ -38,7 +38,7 @@ Ensure the following are installed:
    ```
 
 4. Access the API at:  
-   👉 **[https://bpom.gumserver.my.id](https://bpom.gumserver.my.id)**
+   👉 **[https://bpom.gumapp.my.id](https://bpom.gumapp.my.id)**
 
 ---
 

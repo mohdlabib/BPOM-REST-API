@@ -1,10 +1,8 @@
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const cron = require('node-cron');
+const { log } = require('console');
 
-function delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
 
 const appendToJsonFile = async (data) => {
     const filename = 'db/bpom_data.json';
@@ -71,40 +69,51 @@ const parseData = (data) => {
 
 const scrapeData = async () => {
     const baseUrl = 'https://cekbpom.pom.go.id/all-produk';
-    const browser = await puppeteer.launch({headless: true, args: ['--no-sandbox']})
+    const totalPerPage = 25000;
+
+    const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
     const page = await browser.newPage();
     await page.setDefaultTimeout(0);
 
     console.log('Membuka halaman...');
     await page.goto(baseUrl, { waitUntil: 'networkidle2' });
+    await page.waitForSelector('#table_wrapper');
 
-    let currentPage = 1;
-    let totalPerPage = 25000;
-
-    const seenRegisterNumbers = await loadSeenRegisterNumbers();
-
-    console.log(`Total nomor registrasi yang sudah diproses: ${seenRegisterNumbers.size}`);
-
-    await page.waitForSelector('.dataTables_wrapper #customLength');
-    console.log(`Mengatur jumlah data per halaman menjadi ${totalPerPage}...`);
-    await page.evaluate((total) => {
-        const input = document.querySelector('#customLength');
-        if (input) {
-            input.value = total; 
-            const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
-            input.dispatchEvent(event); 
-        }
-    }, totalPerPage);
-
-    console.log('Menunggu loading selesai...');
-    await page.waitForFunction(() => {
-        const blockUiElement = document.querySelector('.block-ui-overlay');
-        return !blockUiElement || blockUiElement.style.display === 'none';
+    const customLengthExists = await page.evaluate(() => {
+        return !!document.querySelector('#customLength');
     });
 
+    if (customLengthExists) {
+        console.log(`Mengatur jumlah data per halaman menjadi ${totalPerPage}...`);
+        await page.evaluate((total) => {
+            const input = document.querySelector('#customLength');
+            if (input) {
+                input.value = total;
+                const event = new Event('change', { bubbles: true });
+                input.dispatchEvent(event);
+            }
+        }, totalPerPage);
+
+        await page.waitForFunction(() => {
+            const blockUiElement = document.querySelector('.block-ui-overlay');
+            return !blockUiElement || blockUiElement.style.display === 'none';
+        });
+
+        const totalRows = await page.evaluate(() => {
+            const rows = document.querySelectorAll('table tbody tr');
+            return rows.length;
+        });
+        console.log(`Total jumlah baris di tabel: ${totalRows}`);
+    } else {
+        console.log('Elemen #customLength TIDAK ditemukan. Melanjutkan tanpa pengaturan jumlah data per halaman.');
+    }
+
+    const seenRegisterNumbers = await loadSeenRegisterNumbers();
+    console.log(`Total nomor registrasi yang sudah diproses: ${seenRegisterNumbers.size}`);
+    
     while (true) {
         try {
-            await page.waitForSelector('table tbody tr', { timeout: 30000 });
+            await page.waitForSelector('table tbody tr');
 
             const data = await page.evaluate(() => {
                 const rows = Array.from(document.querySelectorAll('table tbody tr'));
@@ -129,7 +138,7 @@ const scrapeData = async () => {
             }
 
         } catch (error) {
-            console.error(`Gagal mengambil data dari halaman ${currentPage}:`, error);
+            console.error('Gagal mengambil data dari tabel:', error);
             break;
         }
 
@@ -143,23 +152,21 @@ const scrapeData = async () => {
 
         try {
             await page.click('.pagination-wrapper #custom_table_next');
-            console.log('Navigasi ke halaman berikutnya...');
             await page.waitForFunction(() => {
                 const blockUiElement = document.querySelector('.block-ui-overlay');
                 return !blockUiElement || blockUiElement.style.display === 'none';
             });
+
+            console.log('Navigasi ke halaman berikutnya...');
         } catch (error) {
-            console.error(`Gagal navigasi ke halaman berikutnya dari halaman ${currentPage}:`, error);
+            console.error('Gagal navigasi ke halaman berikutnya:', error);
             break;
         }
-
-        currentPage++;
     }
 
     console.log('Scraping selesai. Data disimpan ke file db/bpom_data.json.');
     await browser.close();
 };
-
 
 function getFormattedDate() {
     const now = new Date();
@@ -172,7 +179,7 @@ function getFormattedDate() {
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
-cron.schedule('0 22 * * *', async () => {
+cron.schedule('0 23 * * *', async () => {
     const currentDate = getFormattedDate();
     console.log(`Menjalankan scraping pada: ${currentDate}`);
     await scrapeData();

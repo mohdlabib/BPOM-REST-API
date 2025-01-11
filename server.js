@@ -70,48 +70,56 @@ const parseData = (data) => {
 
 const scrapeData = async () => {
     const baseUrl = 'https://cekbpom.pom.go.id/all-produk';
-    const totalPerPage = 25000;
+    const totalPerPage = 15000;
 
-    const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
-    const page = await browser.newPage();
-    await page.setDefaultTimeout(0);
+    while (true) {
+        try {
+            const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
+            const page = await browser.newPage();
+            await page.setDefaultTimeout(0);
 
-    console.log('Membuka halaman...');
-    await page.goto(baseUrl, { waitUntil: 'networkidle2' });
-    await page.waitForSelector('#table_wrapper');
+            console.log('Membuka halaman...');
+            await page.goto(baseUrl, { waitUntil: 'networkidle2' });
+            await page.waitForSelector('#table_wrapper');
 
-    const customLengthExists = await page.evaluate(() => {
-        return !!document.querySelector('#customLength');
-    });
+            const customLengthExists = await page.evaluate(() => {
+                return !!document.querySelector('#customLength');
+            });
 
-    if (customLengthExists) {
-        console.log(`Mengatur jumlah data per halaman menjadi ${totalPerPage}...`);
-        await page.evaluate((total) => {
-            const input = document.querySelector('#customLength');
-            if (input) {
-                input.value = total;
-                const event = new Event('change', { bubbles: true });
-                input.dispatchEvent(event);
+            if (customLengthExists) {
+                console.log(`Mengatur jumlah data per halaman menjadi ${totalPerPage}...`);
+                await page.evaluate((total) => {
+                    const input = document.querySelector('#customLength');
+                    if (input) {
+                        input.value = total;
+                        const event = new Event('change', { bubbles: true });
+                        input.dispatchEvent(event);
+                    }
+                }, totalPerPage);
+
+                await page.waitForFunction(() => {
+                    const blockUiElement = document.querySelector('.block-ui-overlay');
+                    return !blockUiElement || blockUiElement.style.display === 'none';
+                });
             }
-        }, totalPerPage);
 
-        await page.waitForFunction(() => {
-            const blockUiElement = document.querySelector('.block-ui-overlay');
-            return !blockUiElement || blockUiElement.style.display === 'none';
-        });
+            console.log('Mulai scraping data...');
+            await scrapeTableData(page); 
+            console.log('Scraping selesai.');
 
-        const totalRows = await page.evaluate(() => {
-            const rows = document.querySelectorAll('table tbody tr');
-            return rows.length;
-        });
-        console.log(`Total jumlah baris di tabel: ${totalRows}`);
-    } else {
-        console.log('Elemen #customLength TIDAK ditemukan. Melanjutkan tanpa pengaturan jumlah data per halaman.');
+            await browser.close();
+            break; 
+        } catch (error) {
+            console.error(`Terjadi error: ${error.message}`);
+            console.log('Mencoba ulang...');
+        }
     }
+}
 
+const scrapeTableData = async (page) => {
     const seenRegisterNumbers = await loadSeenRegisterNumbers();
     console.log(`Total nomor registrasi yang sudah diproses: ${seenRegisterNumbers.size}`);
-    
+
     while (true) {
         try {
             await page.waitForSelector('table tbody tr');
@@ -140,7 +148,7 @@ const scrapeData = async () => {
 
         } catch (error) {
             console.error('Gagal mengambil data dari tabel:', error);
-            break;
+            throw error; 
         }
 
         const nextButton = await page.$('.pagination-wrapper #custom_table_next');
@@ -155,7 +163,6 @@ const scrapeData = async () => {
             await page.click('.pagination-wrapper #custom_table_next');
             console.log('Navigasi ke halaman berikutnya...');
 
-            // Cek apakah elemen block-ui-overlay muncul setelah klik
             await page.waitForFunction(() => {
                 const blockUiElement = document.querySelector('.block-ui-overlay');
                 return blockUiElement && blockUiElement.style.display !== 'none';
@@ -167,15 +174,11 @@ const scrapeData = async () => {
             });
 
         } catch (error) {
-            console.error('Gagal navigasi ke halaman berikutnya atau menunggu elemen:', error);
-            break;
+            console.error('Gagal navigasi ke halaman berikutnya:', error);
+            throw error;
         }
     }
-
-    console.log('Scraping selesai. Data disimpan ke file db/bpom_data.json.');
-    await browser.close();
-};
-
+}
 
 function getFormattedDate() {
     const now = new Date();

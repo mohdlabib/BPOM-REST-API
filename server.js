@@ -1,30 +1,31 @@
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const cron = require('node-cron');
-const { log } = require('console');
 
+const filename = 'db/bpom_data.json';
 
-const appendToJsonFile = async (data) => {
-    const filename = 'db/bpom_data.json';
-    let existingData = { lastUpdated: '', data: [] };
-
-    if (fs.existsSync(filename)) {
-        try {
-            const file = await fs.promises.readFile(filename, 'utf8');
-            existingData = JSON.parse(file);
-        } catch (error) {
-            console.error('Error reading or parsing JSON file:', error);
-        }
+const appendToJsonFile = async (filename, data) => {
+    if (typeof filename !== 'string') {
+        throw new TypeError(`Invalid filename: ${filename}. Filename must be a string.`);
     }
 
-    existingData.data.push(data);
-    existingData.lastUpdated = getFormattedDate();
-
-    await fs.promises.writeFile(filename, JSON.stringify(existingData, null, 4), 'utf8');
-};
+    try {
+        const existingData = JSON.parse(await fs.promises.readFile(filename, 'utf8'));
+        existingData.lastUpdated = getFormattedDate();
+        existingData.data.push(data);
+        await fs.promises.writeFile(filename, JSON.stringify(existingData, null, 4));
+    } catch (err) {
+        if (err.code === 'ENOENT') {
+            console.log(`File tidak ditemukan. Membuat file baru: ${filename}`);
+            await fs.promises.writeFile(filename, JSON.stringify([data], null, 4));
+        } else {
+            console.error(`Error saat membuka atau menulis ke file: ${err.message}`);
+            throw err;
+        }
+    }
+}
 
 const loadSeenRegisterNumbers = async () => {
-    const filename = 'db/bpom_data.json';
     const seenNumbers = new Set();
 
     if (fs.existsSync(filename)) {
@@ -132,7 +133,7 @@ const scrapeData = async () => {
                 const nomorRegistrasi = item.nomorRegistrasi.split("\n")[0].trim();
                 if (!seenRegisterNumbers.has(nomorRegistrasi)) {
                     const parsedData = parseData(item);
-                    await appendToJsonFile(parsedData);
+                    await appendToJsonFile(filename, parsedData);
                     seenRegisterNumbers.add(nomorRegistrasi);
                 }
             }
@@ -152,14 +153,21 @@ const scrapeData = async () => {
 
         try {
             await page.click('.pagination-wrapper #custom_table_next');
+            console.log('Navigasi ke halaman berikutnya...');
+
+            // Cek apakah elemen block-ui-overlay muncul setelah klik
+            await page.waitForFunction(() => {
+                const blockUiElement = document.querySelector('.block-ui-overlay');
+                return blockUiElement && blockUiElement.style.display !== 'none';
+            });
+
             await page.waitForFunction(() => {
                 const blockUiElement = document.querySelector('.block-ui-overlay');
                 return !blockUiElement || blockUiElement.style.display === 'none';
             });
 
-            console.log('Navigasi ke halaman berikutnya...');
         } catch (error) {
-            console.error('Gagal navigasi ke halaman berikutnya:', error);
+            console.error('Gagal navigasi ke halaman berikutnya atau menunggu elemen:', error);
             break;
         }
     }
@@ -167,6 +175,7 @@ const scrapeData = async () => {
     console.log('Scraping selesai. Data disimpan ke file db/bpom_data.json.');
     await browser.close();
 };
+
 
 function getFormattedDate() {
     const now = new Date();

@@ -10,7 +10,7 @@ const readDataFromFile = () => {
     if (fs.existsSync(filename)) {
         try {
             const fileContent = fs.readFileSync(filename, 'utf8');
-            return JSON.parse(fileContent);
+            return fileContent.trim() ? JSON.parse(fileContent) : { lastUpdated: null, data: [] };
         } catch (error) {
             console.error('Error reading or parsing JSON file:', error);
             return { lastUpdated: null, data: [] };
@@ -18,6 +18,7 @@ const readDataFromFile = () => {
     }
     return { lastUpdated: null, data: [] };
 };
+
 
 app.get('/', (req, res) => {
     res.json(readDataFromFile());
